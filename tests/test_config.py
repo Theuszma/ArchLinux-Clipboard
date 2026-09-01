@@ -34,6 +34,10 @@ class TestDefaults(ConfigTestCase):
     def test_auto_install_vem_desligado(self):
         # Releases não são assinadas: instalar sozinho é opt-in consciente.
         self.assertFalse(DEFAULTS["update_auto_install"])
+
+    def test_janela_sempre_visivel_desligada_por_padrao(self):
+        # Uma janela que nasce por cima de tudo assustaria mais do que ajuda.
+        self.assertFalse(DEFAULTS["keep_on_top"])
         self.assertFalse(self.load().get("update_auto_install"))
 
     def test_procurar_atualizacoes_vem_ligado(self):

@@ -120,6 +120,7 @@ class ClipboardWindow(Adw.ApplicationWindow):
         capture = Gio.Menu()
         # Escape rápido para copiar algo sensível sem deixar rastro.
         capture.append("Pausar captura", "app.pause")
+        capture.append("Manter sempre visível", "app.keep-on-top")
         menu.append_section(None, capture)
 
         history = Gio.Menu()
@@ -305,6 +306,10 @@ class ClipboardWindow(Adw.ApplicationWindow):
     def _on_active_changed(self, *_args) -> None:
         """Some ao perder o foco, como a área de transferência do Windows."""
         if self.get_property("is-active"):
+            return
+        if self.app.keep_on_top_active:
+            # O ponto de ficar sempre visível é justamente poder mexer em
+            # outra janela sem perder o histórico de vista.
             return
         if not self.app.config.get("close_on_focus_loss"):
             return

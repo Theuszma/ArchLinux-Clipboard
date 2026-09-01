@@ -1,0 +1,8 @@
+{
+  "uuid": "archclip@theuszma.github.io",
+  "name": "ArchClip",
+  "description": "Entrega ao daemon do ArchClip as mudanças da área de transferência. O Mutter não implementa os protocolos data-control, então só código rodando dentro do GNOME Shell consegue vigiar a seleção em segundo plano.",
+  "shell-version": ["45", "46", "47", "48", "49", "50"],
+  "url": "https://github.com/Theuszma/ArchLinux-Clipboard",
+  "version-name": "0.1.0"
+}

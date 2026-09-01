@@ -91,6 +91,40 @@ class TestBackendDetection(unittest.TestCase):
         # Sem evento de mudança no X11; o monitor cai no polling.
         self.assertIsNone(clipboard.X11Backend().watch_command())
 
+    def test_backends_externos_nao_avisam_sozinhos(self):
+        # Só a extensão do GNOME Shell tem sinal de mudança.
+        self.assertIsNone(clipboard.Backend().watch_signal(lambda: None))
+        self.assertIsNone(clipboard.WaylandBackend().watch_signal(lambda: None))
+        self.assertIsNone(clipboard.X11Backend().watch_signal(lambda: None))
+
+
+class TestPreferenciaPeloShell(unittest.TestCase):
+    """No Wayland, a extensão do GNOME Shell ganha do wl-clipboard.
+
+    É a única que enxerga a seleção em segundo plano no GNOME; o wl-paste
+    fica como plano B para os compositores que implementam data-control.
+    """
+
+    def setUp(self):
+        self.original = clipboard.shell_backend
+        self.addCleanup(setattr, clipboard, "shell_backend", self.original)
+
+    def test_usa_a_extensao_quando_ela_esta_no_ar(self):
+        falso = clipboard.Backend()
+        clipboard.shell_backend = lambda: falso
+        backend, erro = clipboard.detect_backend()
+        if not clipboard.is_wayland():
+            self.skipTest("sessão X11")
+        self.assertIs(backend, falso)
+        self.assertEqual(erro, "")
+
+    def test_sem_extensao_cai_no_wl_clipboard(self):
+        clipboard.shell_backend = lambda: None
+        backend, _erro = clipboard.detect_backend()
+        if not clipboard.is_wayland():
+            self.skipTest("sessão X11")
+        self.assertIsInstance(backend, clipboard.WaylandBackend)
+
 
 if __name__ == "__main__":
     unittest.main()

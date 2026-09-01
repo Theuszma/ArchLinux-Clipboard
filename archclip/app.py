@@ -48,6 +48,9 @@ class ArchClipApp(Adw.Application):
         self.clipboard_backend = None
         self.startup_message = ""
         self.monitor_error = ""
+        self._shell_watch_id = 0
+        # Só vira True quando a extensão confirma que levantou a janela.
+        self.keep_on_top_active = False
         # Pausa é de propósito só da sessão: um histórico que continua
         # pausado depois do reboot, em silêncio, é armadilha.
         self.paused = False
@@ -108,14 +111,8 @@ class ArchClipApp(Adw.Application):
         self.store = Store()
         self.store.trim(int(self.config.get("max_items")))
 
-        backend, error = detect_backend()
-        self.startup_message = error
-        if backend is not None:
-            self.monitor = Monitor(
-                self.config, backend, self._on_capture, self._on_monitor_status
-            )
-            self.monitor.start()
-        self.clipboard_backend = backend
+        self._bind_backend()
+        self._watch_shell_extension()
 
         self.hotkey_backend = detect_hotkey_backend(self.config)
         self.window = ClipboardWindow(self)
@@ -137,6 +134,11 @@ class ArchClipApp(Adw.Application):
         GLib.timeout_add_seconds(UPDATE_CHECK_DELAY, self._maybe_check_updates)
 
     def do_shutdown(self) -> None:
+        if self._shell_watch_id:
+            from . import shellext
+
+            shellext.unwatch_service(self._shell_watch_id)
+            self._shell_watch_id = 0
         if self.monitor is not None:
             self.monitor.stop()
         if self.store is not None:
@@ -154,6 +156,90 @@ class ArchClipApp(Adw.Application):
         Gtk.StyleContext.add_provider_for_display(
             display, provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
         )
+
+    # -------------------------------------------------------------- clipboard
+
+    def _bind_backend(self) -> None:
+        """(Re)liga o monitor ao melhor backend disponível agora.
+
+        Chamado no início e sempre que a extensão do GNOME Shell entra ou sai
+        do ar, então precisa ser idempotente: derruba o monitor anterior antes
+        de subir o novo.
+        """
+        if self.monitor is not None:
+            self.monitor.stop()
+            self.monitor = None
+
+        backend, error = detect_backend()
+        self.clipboard_backend = backend
+        # O erro que estava na tela era do backend antigo; o novo ainda não
+        # falhou em nada.
+        self.monitor_error = error
+
+        if backend is not None:
+            monitor = Monitor(
+                self.config,
+                backend,
+                self._on_capture,
+                lambda message: self._on_monitor_status(message, monitor),
+            )
+            monitor.paused = self.paused
+            self.monitor = monitor
+            monitor.start()
+
+        # A extensão pode ter acabado de subir; ela é quem sabe empilhar
+        # janelas, então a preferência precisa ser reafirmada aqui.
+        self.apply_keep_on_top()
+        self._refresh_status()
+
+    def _watch_shell_extension(self) -> None:
+        """Acompanha a extensão do Shell, que vai e volta durante a sessão.
+
+        O usuário liga e desliga a extensão nas Extensões do GNOME, e o Shell
+        reinicia. Sem observar, o daemon ficaria preso ao backend que existia
+        no instante em que subiu -- vigiando nada, ou falando com um serviço
+        que não está mais lá.
+        """
+        try:
+            from . import shellext
+        except ImportError:
+            return
+        self._shell_watch_id = shellext.watch_service(self._on_shell_service_changed)
+
+    def apply_keep_on_top(self) -> str:
+        """Manda a extensão manter (ou não) a janela por cima. Erro ou ""."""
+        wanted = bool(self.config.get("keep_on_top"))
+        try:
+            from . import shellext
+        except ImportError:
+            self.keep_on_top_active = False
+            return "extensão do GNOME Shell indisponível"
+
+        error = shellext.set_window_above(wanted)
+        # A janela só deixa de sumir ao perder o foco se estiver mesmo por
+        # cima. Sem a extensão, ficar aberta atrás das outras seria o pior
+        # dos dois mundos: some de vista e não fecha.
+        self.keep_on_top_active = wanted and not error
+        self._sync_keep_on_top_action()
+        return error
+
+    def keep_on_top_available(self) -> bool:
+        """Só a extensão do GNOME Shell sabe pôr uma janela acima das outras.
+
+        Pergunta pelo método, não só pelo serviço: depois de uma atualização a
+        extensão em memória ainda é a antiga até o próximo login.
+        """
+        try:
+            from . import shellext
+        except ImportError:
+            return False
+        return shellext.has_method("SetWindowAbove")
+
+    def _on_shell_service_changed(self, running: bool) -> None:
+        using_shell = getattr(self.clipboard_backend, "name", "") == "gnome-shell"
+        if running == using_shell:
+            return  # já estamos no backend certo
+        self._bind_backend()
 
     # ----------------------------------------------------------------- ações
 
@@ -176,6 +262,17 @@ class ArchClipApp(Adw.Application):
         pause.connect("change-state", self._on_pause_change_state)
         self.add_action(pause)
 
+        # Também no menu, e não só nas configurações: é uma escolha que se faz
+        # no meio do uso ("agora quero mexer na tela sem perder isto de vista").
+        on_top = Gio.SimpleAction.new_stateful(
+            "keep-on-top",
+            None,
+            GLib.Variant.new_boolean(bool(self.config.get("keep_on_top"))),
+        )
+        on_top.connect("change-state", self._on_keep_on_top_change_state)
+        self.add_action(on_top)
+        self._sync_keep_on_top_action()
+
         self.set_accels_for_action("app.settings", ["<Control>comma"])
         self.set_accels_for_action("app.quit-app", ["<Control>q"])
         self.set_accels_for_action("app.pause", ["<Control>space"])
@@ -187,7 +284,24 @@ class ArchClipApp(Adw.Application):
             self.monitor.paused = self.paused
         self._refresh_status()
 
-    def _on_monitor_status(self, message: str) -> bool:
+    def _on_keep_on_top_change_state(self, action, value) -> None:
+        action.set_state(value)
+        # A config avisa o app (_on_config_changed), que aplica na extensão.
+        self.config.set("keep_on_top", value.get_boolean())
+
+    def _sync_keep_on_top_action(self) -> None:
+        """Deixa o item do menu refletir o estado -- e some quando não dá."""
+        action = self.lookup_action("keep-on-top")
+        if action is None:  # ainda em do_startup, antes de registrar as ações
+            return
+        action.set_enabled(self.keep_on_top_available())
+        action.set_state(GLib.Variant.new_boolean(bool(self.config.get("keep_on_top"))))
+
+    def _on_monitor_status(self, message: str, monitor=None) -> bool:
+        # Um monitor já substituído pode estar preso numa leitura e só reportar
+        # o erro depois da troca. O que ele tem a dizer não vale mais.
+        if monitor is not None and monitor is not self.monitor:
+            return GLib.SOURCE_REMOVE
         self.monitor_error = message
         self._refresh_status()
         return GLib.SOURCE_REMOVE
@@ -361,6 +475,8 @@ class ArchClipApp(Adw.Application):
             self.store.trim(int(value))
             if self.window is not None and self.window.get_visible():
                 self.window.refresh()
+        elif key == "keep_on_top":
+            self.apply_keep_on_top()
 
     # ---------------------------------------------------------- atualizações
 

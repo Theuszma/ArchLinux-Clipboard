@@ -180,13 +180,30 @@ class SettingsWindow(Adw.PreferencesWindow):
                 "close_on_copy",
             )
         )
-        window.add(
-            self._switch(
-                "Fechar ao perder o foco",
-                "Comportamento igual ao do Win+V",
-                "close_on_focus_loss",
-            )
+        self._focus_row = self._switch(
+            "Fechar ao perder o foco",
+            "Comportamento igual ao do Win+V",
+            "close_on_focus_loss",
         )
+        window.add(self._focus_row)
+
+        self._on_top_row = self._switch(
+            "Manter sempre visível",
+            "A janela fica por cima das outras: dá para usar o resto da tela "
+            "sem perder o histórico de vista",
+            "keep_on_top",
+        )
+        self._on_top_row.connect("notify::active", lambda *_: self._on_keep_on_top())
+        if not self.app.keep_on_top_available():
+            # No Wayland, empilhamento é decisão do compositor: sem a extensão
+            # do Shell não existe como um app comum se pôr acima dos outros.
+            self._on_top_row.set_sensitive(False)
+            self._on_top_row.set_subtitle(
+                "Indisponível: a extensão do GNOME Shell não está no ar ou é "
+                "de uma versão anterior — faça logout/login"
+            )
+        window.add(self._on_top_row)
+        self._sync_window_rows()
 
         paste_row = self._switch(
             "Colar automaticamente",
@@ -200,6 +217,23 @@ class SettingsWindow(Adw.PreferencesWindow):
         page.add(window)
 
         return page
+
+    def _on_keep_on_top(self) -> None:
+        error = self.app.apply_keep_on_top()
+        self._sync_window_rows()
+        if error:
+            self._toast("Não consegui falar com a extensão do Shell: {}".format(error))
+
+    def _sync_window_rows(self) -> None:
+        """Enquanto a janela fica sempre visível, fechar ao perder o foco não
+        faz sentido -- seria fechar justamente quando você vai usar a tela."""
+        fixa = bool(self.config.get("keep_on_top"))
+        self._focus_row.set_sensitive(not fixa)
+        self._focus_row.set_subtitle(
+            "Ignorado enquanto a janela fica sempre visível"
+            if fixa
+            else "Comportamento igual ao do Win+V"
+        )
 
     # ----------------------------------------------------------------- atalho
 

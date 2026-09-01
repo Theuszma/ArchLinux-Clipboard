@@ -1,7 +1,14 @@
 """Leitura e escrita do clipboard do sistema.
 
-Wayland usa wl-clipboard (wl-paste/wl-copy); X11 usa xclip. Em ambos os casos
-falamos com o processo externo em vez da API do GDK, porque no Wayland um
+Três backends, nesta ordem de preferência:
+
+- GNOME Shell (`shellext`), via a extensão em `extension/`. É o único que
+  enxerga o clipboard em segundo plano no GNOME, porque o Mutter não
+  implementa data-control.
+- wl-clipboard (wl-paste/wl-copy), para os compositores que implementam.
+- xclip, no X11.
+
+Falamos com processos externos em vez da API do GDK porque no Wayland um
 cliente só recebe eventos de seleção enquanto tem foco de teclado -- inútil
 para um daemon que fica em segundo plano.
 """
@@ -11,7 +18,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
-from typing import Optional
+from typing import Callable, Optional
 
 # Ordem de preferência ao decidir o que guardar de uma seleção.
 IMAGE_TYPES = ("image/png", "image/webp", "image/jpeg", "image/bmp", "image/tiff")
@@ -56,6 +63,15 @@ class Backend:
 
     def watch_command(self) -> Optional[list[str]]:
         """Comando que emite uma linha em stdout a cada mudança, se houver."""
+        return None
+
+    def watch_signal(self, on_change) -> Optional[Callable[[], None]]:
+        """Assina um evento de mudança, se o backend tiver um.
+
+        Devolve a função que cancela a assinatura, ou None quando o backend
+        não sabe avisar sozinho -- aí o monitor cai no `watch_command` ou no
+        polling.
+        """
         return None
 
 
@@ -133,9 +149,28 @@ class X11Backend(Backend):
         process.communicate(data, timeout=TIMEOUT)
 
 
+def shell_backend() -> Optional[Backend]:
+    """Backend da extensão do GNOME Shell, se ela estiver no ar.
+
+    Import tardio: `shellext` precisa do GIO, e este módulo é usado (e
+    testado) em lugares onde o PyGObject pode não existir.
+    """
+    try:
+        from . import shellext
+    except ImportError:
+        return None
+    return shellext.connect()
+
+
 def detect_backend() -> tuple[Optional[Backend], str]:
     """Escolhe o backend disponível. Retorna (backend, mensagem_de_erro)."""
     if is_wayland():
+        # No GNOME é o único caminho que enxerga o clipboard em segundo
+        # plano; nos demais compositores nem chega a existir e o wl-clipboard
+        # assume, com o data-control que eles implementam.
+        shell = shell_backend()
+        if shell is not None:
+            return shell, ""
         if not shutil.which("wl-paste") or not shutil.which("wl-copy"):
             return None, (
                 "wl-clipboard não encontrado. Instale com: sudo pacman -S wl-clipboard"

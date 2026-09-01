@@ -3,6 +3,7 @@
 set -euo pipefail
 
 APP_ID="io.github.theuszma.ArchClip"
+EXT_UUID="archclip@theuszma.github.io"
 
 DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
 CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
@@ -78,6 +79,14 @@ if remaining != paths:
     print("    keybinding do ArchClip removido")
 PY
 
+# ------------------------------------------------- extensão do GNOME Shell
+
+info "Removendo a extensão do GNOME Shell"
+# Desligar antes de apagar: assim o `disable()` da extensão tira o serviço do
+# barramento e desconecta o sinal enquanto o código ainda existe.
+gnome-extensions disable "$EXT_UUID" >/dev/null 2>&1 || true
+rm -rf "${DATA_HOME:?}/gnome-shell/extensions/$EXT_UUID"
+
 # ------------------------------------------------------------------ arquivos
 
 info "Removendo arquivos instalados"
@@ -101,4 +110,5 @@ fi
 
 echo
 green "ArchClip removido."
-echo "Faça logout/login para o GNOME recarregar os atalhos."
+echo "Faça logout/login para o GNOME recarregar os atalhos e descarregar a"
+echo "extensão do Shell."

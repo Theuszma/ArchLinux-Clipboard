@@ -25,6 +25,13 @@ THUMB_DIR = CACHE_DIR / "thumbs"
 
 AUTOSTART_DIR = _xdg("XDG_CONFIG_HOME", ".config") / "autostart"
 
+# A extensão do GNOME Shell mora fora da árvore do app: quem varre esse
+# diretório é o Shell, e ele só olha no lugar padrão.
+SHELL_EXTENSION_UUID = "archclip@theuszma.github.io"
+SHELL_EXTENSION_DIR = (
+    _xdg("XDG_DATA_HOME", ".local/share") / "gnome-shell" / "extensions" / SHELL_EXTENSION_UUID
+)
+
 # O histórico guarda em texto puro tudo o que passou pela área de
 # transferência -- senhas e tokens inclusive. Num sistema com mais de um
 # usuário, o padrão do umask (755/644) deixaria isso legível por todos, então

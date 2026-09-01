@@ -25,7 +25,7 @@ from typing import Optional
 
 from . import GITHUB_REPO, __version__
 from .config import Config
-from .util import DATA_DIR
+from .util import DATA_DIR, SHELL_EXTENSION_DIR
 
 API_URL = "https://api.github.com/repos/{}/releases/latest".format(GITHUB_REPO)
 RELEASES_URL = "https://github.com/{}/releases".format(GITHUB_REPO)
@@ -224,6 +224,30 @@ def _find_package_root(tree: Path) -> Optional[Path]:
     return None
 
 
+def _refresh_shell_extension(version_dir: Path) -> bool:
+    """Atualiza a extensão do GNOME Shell junto com o app, se já estiver lá.
+
+    O daemon e a extensão conversam por uma interface que pode mudar entre
+    versões, então deixar uma para trás quebraria a captura. Só mexemos em
+    quem já tem a extensão instalada: instalá-la para quem nunca a quis não é
+    trabalho de uma atualização automática.
+    """
+    source = version_dir / "extension"
+    if not SHELL_EXTENSION_DIR.is_dir() or not source.is_dir():
+        return False
+    try:
+        # Tudo o que estiver lá, não uma lista fixa: no dia em que a extensão
+        # ganhar um prefs.js ou um stylesheet, uma lista escrita à mão
+        # deixaria metade para trás sem avisar.
+        for path in sorted(source.iterdir()):
+            if path.is_file():
+                shutil.copy2(path, SHELL_EXTENSION_DIR / path.name)
+    except OSError as exc:
+        print("archclip: não consegui atualizar a extensão do Shell:", exc)
+        return False
+    return True
+
+
 def install(release: Release, timeout: int = NETWORK_TIMEOUT) -> tuple[bool, str]:
     """Baixa e instala a release. Bloqueia -- chamar fora da thread do GTK."""
     if not can_self_install():
@@ -269,7 +293,12 @@ def install(release: Release, timeout: int = NETWORK_TIMEOUT) -> tuple[bool, str
         return False, "Falha ao ativar a nova versão: {}".format(exc)
 
     _prune_old_versions(keep=release.label)
-    return True, "Versão {} instalada. Reinicie o ArchClip para aplicar.".format(release.label)
+
+    message = "Versão {} instalada. Reinicie o ArchClip para aplicar.".format(release.label)
+    if _refresh_shell_extension(destination):
+        # O Shell carrega o código da extensão uma vez por sessão.
+        message += " A extensão do GNOME Shell também mudou: faça logout/login."
+    return True, message
 
 
 def _point_current_to(destination: Path) -> None:

@@ -24,6 +24,10 @@ DEFAULTS: dict[str, Any] = {
     # Janela
     "close_on_copy": True,
     "close_on_focus_loss": True,
+    # Mantém a janela por cima das outras para você usar o resto da tela sem
+    # perder o histórico de vista. Depende da extensão do GNOME Shell: no
+    # Wayland, empilhamento é decisão do compositor.
+    "keep_on_top": False,
     "auto_paste": False,
     # Sistema
     "autostart": True,

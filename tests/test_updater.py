@@ -204,6 +204,40 @@ class TestInstallKind(unittest.TestCase):
         self.assertNotEqual(mensagem, "")
 
 
+class TestRefreshShellExtension(unittest.TestCase):
+    def setUp(self):
+        self.workdir = Path(tempfile.mkdtemp(prefix="archclip-ext-"))
+        self.addCleanup(shutil.rmtree, self.workdir, ignore_errors=True)
+
+        self.version_dir = self.workdir / "versao"
+        (self.version_dir / "extension").mkdir(parents=True)
+        (self.version_dir / "extension" / "extension.js").write_text("// nova", encoding="utf-8")
+        (self.version_dir / "extension" / "metadata.json").write_text("{}", encoding="utf-8")
+
+        self.instalada = updater.SHELL_EXTENSION_DIR
+        shutil.rmtree(self.instalada, ignore_errors=True)
+        self.addCleanup(shutil.rmtree, self.instalada, ignore_errors=True)
+
+    def test_atualiza_quem_ja_tem_a_extensao(self):
+        self.instalada.mkdir(parents=True)
+        (self.instalada / "extension.js").write_text("// antiga", encoding="utf-8")
+
+        self.assertTrue(updater._refresh_shell_extension(self.version_dir))
+        self.assertEqual((self.instalada / "extension.js").read_text(encoding="utf-8"), "// nova")
+        self.assertTrue((self.instalada / "metadata.json").exists())
+
+    def test_nao_instala_para_quem_nao_tem(self):
+        # Instalar a extensão sozinho, para quem nunca a quis, não é trabalho
+        # de uma atualização automática.
+        self.assertFalse(updater._refresh_shell_extension(self.version_dir))
+        self.assertFalse(self.instalada.exists())
+
+    def test_release_sem_extensao_nao_quebra(self):
+        self.instalada.mkdir(parents=True)
+        shutil.rmtree(self.version_dir / "extension")
+        self.assertFalse(updater._refresh_shell_extension(self.version_dir))
+
+
 class TestRelease(unittest.TestCase):
     def test_label(self):
         release = updater.Release(
