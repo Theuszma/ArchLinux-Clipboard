@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "archclip"
+version = "0.1.0"
+description = "Histórico da área de transferência para Arch Linux, no estilo do Win+V"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Theuszma" }]
+keywords = ["clipboard", "gnome", "wayland", "arch-linux", "gtk4"]
+classifiers = [
+  "Environment :: X11 Applications :: GTK",
+  "Intended Audience :: End Users/Desktop",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Topic :: Desktop Environment",
+]
+# PyGObject vem do pacote do sistema (python-gobject); instalar via pip aqui
+# só quebraria a ligação com o GTK4 do sistema.
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/Theuszma/ArchLinux-Clipboard"
+Issues = "https://github.com/Theuszma/ArchLinux-Clipboard/issues"
+
+[project.scripts]
+archclip = "archclip.__main__:main"
+
+[tool.setuptools]
+packages = ["archclip", "archclip.ui"]
+
+[tool.setuptools.package-data]
+archclip = ["ui/*.css"]

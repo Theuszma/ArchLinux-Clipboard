@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Área de Transferência
+Name[en]=Clipboard History
+GenericName=Gerenciador de área de transferência
+Comment=Histórico de textos e imagens copiados, com itens fixados
+Exec=archclip --show
+Icon=io.github.theuszma.ArchClip
+Terminal=false
+Categories=Utility;GTK;
+Keywords=clipboard;area;transferencia;copiar;colar;historico;
+StartupNotify=true
+StartupWMClass=io.github.theuszma.ArchClip

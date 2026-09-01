@@ -1,0 +1,4 @@
+# Projeto roda em Linux: nada de CRLF, nem em checkout no Windows.
+# Sem isto, com core.autocrlf=true os .sh sairiam com CRLF e o shebang
+# quebraria ("bad interpreter: /usr/bin/env bash^M").
+* text=auto eol=lf
